@@ -1,0 +1,74 @@
+# Script to run Nenya on MODIS 96
+# kubectl exec -it test-pod -- /bin/bash
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: erdong-modis-l2-scattering-kube-test
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.io/hostname
+                operator: NotIn
+                values:
+                  - k8s-chase-ci-01.noc.ucsb.edu
+              - key: nvidia.com/gpu.product
+                operator: In
+                values:
+                  - NVIDIA-GeForce-GTX-1080-Ti
+      containers:
+      - name: container
+        image: localhost:30081/profxj/nenya_nvidia:latest  
+        imagePullPolicy: Always
+        resources:
+          requests:
+            cpu: "1"   # Using at least 4
+            memory: "32Gi"  # Using ~7
+            ephemeral-storage: 50Gi
+          limits:
+            cpu: "2"
+            memory: "64Gi"
+            ephemeral-storage: 100Gi
+            nvidia.com/gpu:  "1"  # See docs to exlude certain types
+            #command: ["sh", "-c", "sleep infinity"]
+        command: ["/bin/bash", "-c"]
+        args:
+          - pip install appdirs;
+            git clone -b kube_test https://github.com/profxj/scattering_transform.git;
+            aws --endpoint http://rook-ceph-rgw-nautiluss3.rook s3 cp s3://modis-l2/PreProc/MODIS_R2019_2003_95clear_128x128_preproc_std.h5 /scattering_transform/data/modis_data/;
+            cd scattering_transform/kube/;
+            python3 ./scattering_test_kube.py;
+            aws --endpoint http://rook-ceph-rgw-nautiluss3.rook s3 cp /scattering_transform/data/modis_data/modis_image_syn_scattering_test.h5 s3://modis-l2/scattering_transform_test/modis_image_syn_scattering_test.h5;     
+        env:
+          - name: "ENDPOINT_URL"
+            value: "http://rook-ceph-rgw-nautiluss3.rook"
+          - name: "S3_ENDPOINT"
+            value: "rook-ceph-rgw-nautiluss3.rook"
+        volumeMounts:
+          - name: prp-s3-credentials
+            mountPath: "/root/.aws/credentials"
+            subPath: "credentials"
+          - name: ephemeral
+            mountPath: "/tmp"
+          - name: "dshm"
+            mountPath: "/dev/shm"
+      nodeSelector:
+        nautilus.io/disktype: nvme
+      restartPolicy: Never
+      volumes:
+        # Secrets file for nautilus s3 credentials .aws/credentials and .s3cfg
+        - name: prp-s3-credentials
+          secret:
+            secretName: prp-s3-credentials
+        # Shared memory (necessary for Python's multiprocessing.shared_memory module to work)
+        - name: dshm
+          emptyDir:
+            medium: Memory
+        # Ephemeral storage
+        - name: ephemeral
+          emptyDir: {}
