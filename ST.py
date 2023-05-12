@@ -361,7 +361,8 @@ class ST_2D(object):
             C00.sum(-1),
             C11_reduced.reshape((N_image,-1))
         ), 1)
-        return S, S0, S1, S2, C00, E_residual, L2, C01_reduced.reshape((N_image,-1))
+        #return S, S0, S1, S2, C00, E_residual, L2, C01_reduced.reshape((N_image,-1))
+        return S, S0, S1, S2, C00, E_residual, L2, C11_reduced.reshape((N_image,-1))
     
     
     def phase_harmonics(self, data, J, L):
@@ -946,10 +947,15 @@ def get_power_spectrum(target, bins, device='cpu'):
     return power_spectrum, R_range
     
     
-def get_random_data(target, M, N, mode='image'):
+def get_random_data(target:np.ndarray, M:int, N:int, mode:str='image'):
     '''
     get a gaussian random field with the same power spectrum as the image 'target' (in the 'image' mode),
     or with an assigned power spectrum function 'target' (in the 'func' mode).
+
+    Args:
+        image (np.ndarray): image
+        M (int): row-shape of the image
+        N (int): column-shape of the image
     '''
     
     if mode == 'func':
