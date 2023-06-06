@@ -8,9 +8,10 @@ import torch
 import matplotlib.pyplot as plt
 
 from scattering.utils import to_numpy
-from scattering.ST import FiltersSet, Scattering2d, \
-    get_power_spectrum, Bispectrum_Calculator, Trispectrum_Calculator, AlphaScattering2d_cov, \
-    reduced_ST
+from scattering.FiltersSet import FiltersSet
+from scattering.Scattering2d import Scattering2d
+from scattering.polyspectra_calculators import get_power_spectrum, Bispectrum_Calculator, Trispectrum_Calculator
+from scattering.AlphaScattering2d_cov import AlphaScattering2d_cov
 from scattering.angle_transforms import FourierAngle
 from scattering.scale_transforms import FourierScale
 
@@ -37,6 +38,7 @@ def synthesis(
     N_ensemble=1,
     reference_P00=None,
     pseudo_coef=1,
+    remove_edge=False
 ):
     '''
 the estimator_name can be 's_mean', 's_mean_iso', 's_cov', 's_cov_iso', 'alpha_cov', 
@@ -115,14 +117,14 @@ Use * or + to connect more than one condition.
                 s_cov_set = st_calc.scattering_cov(
                     image, use_ref=True, if_large_batch=if_large_batch, 
                     C11_criteria=C11_criteria, 
-                    normalization=normalization, pseudo_coef=pseudo_coef,
+                    normalization=normalization, pseudo_coef=pseudo_coef, remove_edge=remove_edge
                 )
                 return s_cov_func(s_cov_set, s_cov_func_params)
         if estimator_name=='s_cov_iso_para_perp':
             def func_s(image):
                 result = st_calc.scattering_cov(
                     image, use_ref=True, if_large_batch=if_large_batch, C11_criteria=C11_criteria, 
-                    normalization=normalization, pseudo_coef=pseudo_coef,
+                    normalization=normalization, pseudo_coef=pseudo_coef,remove_edge=remove_edge
                 )
                 index_type, j1, l1, j2, l2, j3, l3 = result['index_for_synthesis_iso']
                 select = (index_type<3) + ((l2==0) + (l2==L//2)) * ((l3==0) + (l3==L//2) + (l3==-1))
@@ -131,7 +133,7 @@ Use * or + to connect more than one condition.
             def func_s(image):
                 result = st_calc.scattering_cov(
                     image, use_ref=True, if_large_batch=if_large_batch, C11_criteria=C11_criteria, 
-                    normalization=normalization, pseudo_coef=pseudo_coef,
+                    normalization=normalization, pseudo_coef=pseudo_coef, remove_edge=remove_edge
                 )
                 coef = result['for_synthesis_iso']
                 index_type, j1, l1, j2, l2, j3, l3 = result['index_for_synthesis_iso']
@@ -144,15 +146,17 @@ Use * or + to connect more than one condition.
                 ), dim=-1)
         if estimator_name=='s_cov_iso':
             func_s = lambda x: st_calc.scattering_cov(
-                x, use_ref=True, if_large_batch=if_large_batch, C11_criteria=C11_criteria, normalization=normalization, pseudo_coef=pseudo_coef,)['for_synthesis_iso']
+                x, use_ref=True, if_large_batch=if_large_batch, C11_criteria=C11_criteria, 
+                normalization=normalization, pseudo_coef=pseudo_coef,remove_edge=remove_edge)['for_synthesis_iso']
         if estimator_name=='s_cov':
             func_s = lambda x: st_calc.scattering_cov(
-                x, use_ref=True, if_large_batch=if_large_batch, C11_criteria=C11_criteria, normalization=normalization, pseudo_coef=pseudo_coef,)['for_synthesis']
+                x, use_ref=True, if_large_batch=if_large_batch, C11_criteria=C11_criteria, 
+                normalization=normalization, pseudo_coef=pseudo_coef,remove_edge=remove_edge)['for_synthesis']
         if estimator_name=='s_cov_2fields_iso':
             def func_s(image):
                 result = st_calc.scattering_cov_2fields(
                     image, image_b, use_ref=True, if_large_batch=if_large_batch, C11_criteria=C11_criteria,
-                    normalization=normalization
+                    normalization=normalization, pseudo_coef=pseudo_coef, remove_edge=remove_edge
                 )
                 select =(result['index_for_synthesis_iso'][0]!=1) * (result['index_for_synthesis_iso'][0]!=3) *\
                         (result['index_for_synthesis_iso'][0]!=7) * (result['index_for_synthesis_iso'][0]!=11)*\
@@ -162,7 +166,7 @@ Use * or + to connect more than one condition.
             def func_s(image):
                 result = st_calc.scattering_cov_2fields(
                     image, image_b, use_ref=True, if_large_batch=if_large_batch, C11_criteria=C11_criteria,
-                    normalization=normalization
+                    normalization=normalization, pseudo_coef=pseudo_coef, remove_edge=remove_edge
                 )
                 select =(result['index_for_synthesis'][0]!=1) * (result['index_for_synthesis'][0]!=3) *\
                         (result['index_for_synthesis'][0]!=7) * (result['index_for_synthesis'][0]!=11) *\
@@ -773,7 +777,9 @@ def prepare_threshold_func(
 
     idx, covs_all = harmonic_transform(s_cov_set, mask=None, output_info=True, if_iso=if_iso)
     mean = covs_all.mean(0)
-    std = covs_all.std(0)
+    print(len(covs_all))
+    std = covs_all.std(0) * (len(covs_all) / (len(covs_all)-1))**0.5
+#     std = covs_all.std(0)
     
     # compute thresholding mask
     mask_list = []
@@ -824,3 +830,22 @@ def convolve_by_FFT(field, func_in_Fourier, device='cpu'):
     # filter_f[0,0] = 1
 
     return field_after_conv, filter_f, k_grid>0
+
+
+# util to reduce ST coefficients
+def reduced_ST(S, J, L):
+    s0 = S[:,0:1]
+    s1 = S[:,1:J+1]
+    s2 = S[:,J+1:].reshape((-1,J,J,L))
+    s21 = (s2.mean(-1) / s1[:,:,None]).reshape((-1,J**2))
+    s22 = (s2[:,:,:,0] / s2[:,:,:,L//2]).reshape((-1,J**2))
+    
+    s1 = np.log(s1)
+    select = s21[0]>0
+    s21 = np.log(s21[:, select])
+    s22 = np.log(s22[:, select])
+    
+    j1 = (np.arange(J)[:,None] + np.zeros(J)[None,:]).flatten()
+    j2 = (np.arange(J)[None,:] + np.zeros(J)[:,None]).flatten()
+    j1j2 = np.concatenate((j1[None, select], j2[None, select]), axis=0)
+    return s0, s1, s21, s22, s2, j1j2
