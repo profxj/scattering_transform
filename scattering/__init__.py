@@ -14,6 +14,7 @@ from scattering.polyspectra_calculators import get_power_spectrum, Bispectrum_Ca
 from scattering.AlphaScattering2d_cov import AlphaScattering2d_cov
 from scattering.angle_transforms import FourierAngle
 from scattering.scale_transforms import FourierScale
+from scattering import io
 
 from IPython import embed
 
