@@ -377,6 +377,7 @@ class Scattering2d(object):
                     # S1 = I1 averaged over (x,y)
                     S1 [:,j1] = (I1**pseudo_coef * weight_temp).mean((-2,-1)) * M1*N1/M/N
                     P00[:,j1] = (I1**2 * weight_temp).mean((-2,-1)) * (M1*N1/M/N)**2
+                    #print(S1[:,j1], P00[:,j1])
                     # 2nd order
                     I1_f = torch.fft.fftn(I1, dim=(-2,-1))
                     del I1

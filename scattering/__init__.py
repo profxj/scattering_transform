@@ -15,12 +15,15 @@ from scattering.AlphaScattering2d_cov import AlphaScattering2d_cov
 from scattering.angle_transforms import FourierAngle
 from scattering.scale_transforms import FourierScale
 
+from IPython import embed
 
 # synthesis
 def synthesis(
-    estimator_name, target, image_init=None, image_ref=None, image_b=None,
+    estimator_name, target, image_init=None, image_ref=None, 
+    image_b=None,
     J=None, L=4, M=None, N=None, l_oversampling=1, frequency_factor=1,
-    mode='image', optim_algorithm='LBFGS', steps=300, learning_rate=0.2,
+    mode='image', optim_algorithm='LBFGS', steps=300, 
+    learning_rate=0.2,
     device='gpu', wavelets='morlet', seed=None,
     if_large_batch=False,
     C11_criteria=None,
@@ -38,7 +41,9 @@ def synthesis(
     N_ensemble=1,
     reference_P00=None,
     pseudo_coef=1,
-    remove_edge=False
+    remove_edge=False,
+    verbose:bool=False,
+    return_extras:bool=False,
 ):
     '''
 the estimator_name can be 's_mean', 's_mean_iso', 's_cov', 's_cov_iso', 'alpha_cov', 
@@ -81,10 +86,15 @@ Use * or + to connect more than one condition.
         
     if J is None:
         J = int(np.log2(min(M,N))) - 1
+
+    if verbose:
+        print(f'J = {J}, L = {L}')
     
     # define calculator and estimator function
     if 's' in estimator_name:
-        st_calc = Scattering2d(M, N, J, L, device, wavelets, l_oversampling=l_oversampling, frequency_factor=frequency_factor)
+        st_calc = Scattering2d(M, N, J, L, device, wavelets, 
+                               l_oversampling=l_oversampling, 
+                               frequency_factor=frequency_factor)
         if mode=='image':
             if '2fields' not in estimator_name: 
                 st_calc.add_ref(ref=target)
@@ -222,7 +232,10 @@ Use * or + to connect more than one condition.
         device=device, precision=precision, print_each_step=print_each_step,
         Fourier=Fourier, ensemble=ensemble,
     )
-    return image_syn
+    if return_extras:
+        return image_syn, func
+    else:
+        return image_syn
 
 # histogram
 def func_hist(image):
