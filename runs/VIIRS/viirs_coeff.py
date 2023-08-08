@@ -41,6 +41,8 @@ def run_viirs98(debug:bool=False):
     for pp_file in pre_proc_files: 
         base = os.path.basename(pp_file)
         year = base[6:10]
+        if year != '2012':
+            continue
 
         # Grab the year
         f.create_group(year)
@@ -51,7 +53,7 @@ def run_viirs98(debug:bool=False):
             base)
 
         #  Run
-        print(f'Processing: {preproc_file}')
+        print(f'Processing year={year}')
         S0, S1, S2, I02 = cutout_utils.coeff_from_preproc(
             preproc_file, debug=debug)
 
