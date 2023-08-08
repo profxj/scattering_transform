@@ -51,6 +51,7 @@ def run_viirs98(debug:bool=False):
             base)
 
         #  Run
+        print(f'Processing: {preproc_file}')
         S0, S1, S2, I02 = cutout_utils.coeff_from_preproc(
             preproc_file, debug=debug)
 
