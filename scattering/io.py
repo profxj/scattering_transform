@@ -2,19 +2,19 @@
 import numpy as np
 import h5py
 
-def load_coeffs(coeff_file:str):
+def load_coeffs(scatt_dict:dict):
 
-    f = h5py.File(coeff_file, 'r')
+    #f = h5py.File(coeff_file, 'r')
 
-    J = f['S1'].shape[-2]
-    L = f['S1'].shape[-1]
+    J = scatt_dict['S1'].shape[-2]
+    L = scatt_dict['S1'].shape[-1]
 
     # TODO -- move this to a more sensible spot
     # Calculate a few quantities
-    S1 = f['S1'][:]
+    S1 = scatt_dict['S1'][:]
     S1_iso = S1.mean(-1)
 
-    S2 = f['S2'][:]
+    S2 = scatt_dict['S2'][:]
     S2_iso = np.zeros((S2.shape[0],J,J,L))
     for l1 in range(L):
         for l2 in range(L):
@@ -34,6 +34,6 @@ def load_coeffs(coeff_file:str):
     coeffs['S2_iso'] = S2_iso
     coeffs['s21'] = avg_s21
     coeffs['s22'] = avg_s22
-    coeffs['I02'] = f['I02'][:]
+    coeffs['I02'] = scatt_dict['I02'][:]
 
     return coeffs
