@@ -11,7 +11,9 @@ import scattering
 sys.path.append('../')
 import cutout_utils
 
+# Ulmo items
 from ulmo import io as ulmo_io
+from ulmo.nenya import figures
 
 
 from IPython import embed
@@ -25,9 +27,6 @@ coeff_file = os.path.join(
         os.getenv('OS_SST'), 'VIIRS', 'Scattering', 
         'VIIRS_98clear_all.h5')
 
-scatt_tbl_file = os.path.join(
-        os.getenv('OS_SST'), 'VIIRS', 'Scattering', 
-        'VIIRS_all_98clear_scatt.parquet')
 
 def run_viirs98(debug:bool=False):
 
@@ -75,8 +74,14 @@ def run_viirs98(debug:bool=False):
 def slurp_coeffs(debug:bool=False, only_2012:bool=True):
 
     # Load in the VIIRS 98 clear table
-    tbl = ulmo_io.load_main_table(local_viirs98_file)
-    pre_proc_files = np.unique(tbl.pp_file.values)
+    DT1_tbl_file = os.path.join(
+        os.getenv('OS_SST'), 'VIIRS', 'Nenya', 'Tables', 
+        'VIIRS_Nenya_98clear_v1_DT1.parquet')
+    tbl = ulmo_io.load_main_table(DT1_tbl_file)
+
+    scatt_tbl_file = os.path.join(
+        os.getenv('OS_SST'), 'VIIRS', 'Scattering', 
+        'VIIRS_all_98clear_DT1_scatt.parquet')
 
     # Load the coefficients
     f_coeff = h5py.File(coeff_file, 'r')
@@ -111,6 +116,36 @@ def slurp_coeffs(debug:bool=False, only_2012:bool=True):
     # Write
     ulmo_io.write_main_table(tbl, scatt_tbl_file, to_s3=False)
 
+def metric_figure(only_2012:bool=True):
+        # Load
+    scatt_tbl_file = os.path.join(
+        os.getenv('OS_SST'), 'VIIRS', 'Scattering', 
+        'VIIRS_all_98clear_DT1_scatt.parquet')
+    tbl = ulmo_io.load_main_table(scatt_tbl_file)
+
+    # Cut
+    if only_2012:
+        idx = tbl.pp_file.str.contains('2012')
+        tbl = tbl[idx].copy()
+
+    outfile='fig_viirs_scatt.png'
+    metrics = ['DT', 'S1_iso_4', 's21', 's22',
+                'clouds', 'log10counts']
+
+    # Plot
+    # MODIS UMAP
+    #binx=np.linspace(-1,10.5,30)
+    #biny=np.linspace(-3.5,4.5,30)
+
+    # VIIRS UMAP
+    binx=np.linspace(1,13,30)
+    biny=np.linspace(3.5,11.5,30)
+    
+    figures.umap_multi_metric(
+        tbl, binx, biny,
+        metrics=metrics,
+        outfile=outfile)
+
 def main(flg):
     if flg== 'all':
         flg= np.sum(np.array([2 ** ii for ii in range(25)]))
@@ -125,6 +160,9 @@ def main(flg):
     if flg & (2**1):
         slurp_coeffs()
 
+    # Metric figure
+    if flg & (2**2):
+        metric_figure()
 
 if __name__ == '__main__':
     import sys
@@ -133,6 +171,7 @@ if __name__ == '__main__':
         flg = 0
         #flg += 2 ** 0  # 1 -- VIIRS 98
         #flg += 2 ** 1  # 2 -- Slurp i coefficients
+        #flg += 2 ** 2  # 4 -- Metric figure
     else:
         flg = sys.argv[1]
 
