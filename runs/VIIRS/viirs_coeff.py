@@ -6,14 +6,17 @@ import sys, os
 
 import torch
 
-sys.path.append('../../')
-import scattering
-sys.path.append('../')
-import cutout_utils
+from sklearn import decomposition
 
 # Ulmo items
 from ulmo import io as ulmo_io
 from ulmo.nenya import figures
+
+
+sys.path.append('../../')
+import scattering
+sys.path.append('../')
+import cutout_utils
 
 
 from IPython import embed
@@ -26,6 +29,14 @@ if os.getenv('OS_SST') is not None:
 coeff_file = os.path.join(
         os.getenv('OS_SST'), 'VIIRS', 'Scattering', 
         'VIIRS_98clear_all.h5')
+
+sub_scatt_DT1_table_file = os.path.join(
+        os.getenv('OS_SST'), 'VIIRS', 'Scattering', 
+        'Tables', 'VIIRS_all_98clear_DT1_scatt_2012.parquet')
+scatt_DT1_tbl_file = os.path.join(
+            os.getenv('OS_SST'), 'VIIRS', 'Scattering', 
+            'Tables',
+            'VIIRS_all_98clear_DT1_scatt.parquet')
 
 
 def run_viirs98(debug:bool=False):
@@ -81,6 +92,7 @@ def slurp_coeffs(debug:bool=False, only_2012:bool=True):
 
     scatt_tbl_file = os.path.join(
         os.getenv('OS_SST'), 'VIIRS', 'Scattering', 
+        'Tables',
         'VIIRS_all_98clear_DT1_scatt.parquet')
 
     # Load the coefficients
@@ -116,11 +128,8 @@ def slurp_coeffs(debug:bool=False, only_2012:bool=True):
     # Write
     ulmo_io.write_main_table(tbl, scatt_tbl_file, to_s3=False)
 
-def metric_figure(only_2012:bool=True):
-        # Load
-    scatt_tbl_file = os.path.join(
-        os.getenv('OS_SST'), 'VIIRS', 'Scattering', 
-        'VIIRS_all_98clear_DT1_scatt.parquet')
+def metric_figure(scatt_tbl_file:str, only_2012:bool=True):
+    # Load
     tbl = ulmo_io.load_main_table(scatt_tbl_file)
 
     # Cut
@@ -129,8 +138,8 @@ def metric_figure(only_2012:bool=True):
         tbl = tbl[idx].copy()
 
     outfile='fig_viirs_scatt.png'
-    metrics = ['DT', 'S1_iso_4', 's21', 's22',
-                'clouds', 'log10counts']
+    metrics = ['S1_iso_4', 's22', 's21', 
+                'PCA_0', 'PCA_1', 'PCA_2'] #'log10counts']
 
     # Plot
     # MODIS UMAP
@@ -138,13 +147,63 @@ def metric_figure(only_2012:bool=True):
     #biny=np.linspace(-3.5,4.5,30)
 
     # VIIRS UMAP
-    binx=np.linspace(1,13,30)
+    binx=np.linspace(1,14,30)
     biny=np.linspace(3.5,11.5,30)
     
     figures.umap_multi_metric(
         tbl, binx, biny,
         metrics=metrics,
         outfile=outfile)
+
+def pca_coeffs(debug:bool=False, only_2012:bool=True,
+               normalize:bool=False):
+
+    # Load in the VIIRS 98 clear table
+    #DT1_tbl_file = os.path.join(
+    #    os.getenv('OS_SST'), 'VIIRS', 'Nenya', 'Tables', 
+    #    'VIIRS_Nenya_98clear_v1_DT1.parquet')
+    scatt_table_file = os.path.join(
+        os.getenv('OS_SST'), 'VIIRS', 'Scattering', 
+        'Tables', 'VIIRS_all_98clear_DT1_scatt.parquet')
+    tbl = ulmo_io.load_main_table(scatt_table_file)
+
+    # Load the coefficients
+    f_coeff = h5py.File(coeff_file, 'r')
+    year = '2012'
+    scoeffs = scattering.io.load_coeffs(f_coeff[year])
+
+    # Pack
+    S2_nonan = []
+    for J in range(5):
+        for J2 in range(J,5):
+            S2_nonan.append(scoeffs['S2_iso'][:,J,J2,:])
+    S2_nonan = np.concatenate(S2_nonan, axis=1)
+    S2_nonan.shape
+
+    # Normalize??
+    if normalize:
+        packed = np.concatenate([scoeffs['S1_iso']/np.mean(coeffs['S1_iso']), S2_nonan/np.mean(S2_nonan)], axis=1)
+    else:
+        packed = np.concatenate([scoeffs['S1_iso'], S2_nonan], axis=1)
+
+    # Cut down to 2012
+    idx = tbl.pp_file.str.contains(year)
+    sub_tbl = tbl[idx]
+
+    packed = packed[sub_tbl.pp_idx]
+
+    # PCA time
+    pca_fit = decomposition.PCA(3).fit(packed)
+    Y = pca_fit.transform(packed)
+
+    # Add to table
+    for ii in range(3):
+        sub_tbl[f'PCA_{ii}'] = Y[:,ii]
+
+    # Write
+    ulmo_io.write_main_table(sub_tbl, 
+                             sub_scatt_DT1_table_file, 
+                             to_s3=False)
 
 def main(flg):
     if flg== 'all':
@@ -162,7 +221,13 @@ def main(flg):
 
     # Metric figure
     if flg & (2**2):
-        metric_figure()
+        #
+        metric_figure(sub_scatt_DT1_table_file)
+
+    # Slurp
+    if flg & (2**3):
+        pca_coeffs()
+
 
 if __name__ == '__main__':
     import sys
@@ -172,6 +237,7 @@ if __name__ == '__main__':
         #flg += 2 ** 0  # 1 -- VIIRS 98
         #flg += 2 ** 1  # 2 -- Slurp i coefficients
         #flg += 2 ** 2  # 4 -- Metric figure
+        #flg += 2 ** 2  # 5 -- PCA
     else:
         flg = sys.argv[1]
 
